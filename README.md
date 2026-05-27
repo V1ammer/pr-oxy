@@ -21,7 +21,7 @@ Ultra-low-latency forward HTTP/HTTPS proxy на чистом Rust с Basic Auth.
 ## Быстрая установка на сервер (одной командой)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/V1ammer/pr-oxy/master/deploy/install.sh | sudo bash -s -- 8080 admin secret
+curl -fsSL https://raw.githubusercontent.com/V1ammer/pr-oxy/refs/heads/master/deploy/install.sh | sudo bash -s -- 8080 admin secret
 ```
 
 Скрипт автоматически:
