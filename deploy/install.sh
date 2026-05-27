@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-REPO="killua/pr-oxy"   # <-- поменяй на свой username/repo
+REPO="V1ammer/pr-oxy"
 PORT="${1:-8080}"
 USER="${2:-}"
 PASS="${3:-}"

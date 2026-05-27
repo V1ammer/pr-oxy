@@ -21,10 +21,10 @@ Ultra-low-latency forward HTTP/HTTPS proxy на чистом Rust с Basic Auth.
 ## Быстрая установка на сервер (одной командой)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/killua/pr-oxy/master/deploy/install.sh | sudo bash -s -- 8080 admin secret
+curl -fsSL https://raw.githubusercontent.com/V1ammer/pr-oxy/master/deploy/install.sh | sudo bash -s -- 8080 admin secret
 ```
 
-> **Важно:** замени `killua/pr-oxy` внутри `deploy/install.sh` на свой `username/repo` перед первым релизом.
+> **Важно:** замени `V1ammer/pr-oxy` внутри `deploy/install.sh` на свой `username/repo` перед первым релизом.
 
 Скрипт автоматически:
 - Создаст пользователя `pr-oxy`
