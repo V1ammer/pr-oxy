@@ -1,81 +1,90 @@
 # pr-oxy
 
-Ultra-low-latency forward HTTP/HTTPS proxy на чистом Rust.
+Ultra-low-latency forward HTTP/HTTPS proxy на чистом Rust с Basic Auth.
 
 - **HTTP** — чтение `Host`-заголовка, форвардинг на `:80`
 - **HTTPS** — поддержка метода `CONNECT`, туннелирование TLS
+- **Basic Auth** — `Proxy-Authorization: Basic base64(user:pass)`
 - **Zero-copy** — `tokio::io::copy_bidirectional` без промежуточных буферов
 - **Минимум кода** — ~90 строк, только необходимые зависимости
 
-## Зависимости
+## Переменные окружения
 
-- [Rust](https://rustup.rs/) (stable)
-- (Опционально) [Nix](https://nixos.org/download/) + [direnv](https://direnv.net/) для изолированного окружения
+| Переменная | Описание | По умолчанию |
+|---|---|---|
+| `PORT` | Порт прокси | `8080` |
+| `USER` | Логин для Basic Auth | — |
+| `PASS` | Пароль для Basic Auth | — |
 
-## Развертывание на Ubuntu
+Если `USER` и `PASS` не заданы — авторизация отключена.
 
-### Способ 1: Через Nix + direnv (рекомендуется)
+## Быстрая установка на сервер (одной командой)
 
 ```bash
-# Установка Nix
+curl -fsSL https://raw.githubusercontent.com/killua/pr-oxy/master/deploy/install.sh | sudo bash -s -- 8080 admin secret
+```
+
+> **Важно:** замени `killua/pr-oxy` внутри `deploy/install.sh` на свой `username/repo` перед первым релизом.
+
+Скрипт автоматически:
+- Создаст пользователя `pr-oxy`
+- Скачает последний бинарник из GitHub Releases
+- Создаст `/opt/pr-oxy/.env` с переменными окружения
+- Установит и запустит systemd unit с auto-restart
+
+Управление после установки:
+```bash
+sudo systemctl status pr-oxy
+sudo systemctl restart pr-oxy
+sudo journalctl -u pr-oxy -f
+```
+
+## Разработка
+
+### Способ 1: Через Nix + direnv
+
+```bash
 sh <(curl -L https://nixos.org/nix/install) --daemon
-
-# Включение flakes
-mkdir -p ~/.config/nix
-echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
-
-# Установка direnv
-sudo apt update && sudo apt install -y direnv
-# Добавь хук в shell:
+mkdir -p ~/.config/nix && echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+sudo apt install -y direnv
 echo 'eval "$(direnv hook bash)"' >> ~/.bashrc
 
-# Клонирование и вход в директорию
 cd pr-oxy
-direnv allow        # подтянет Rust toolchain автоматически
-
-# Сборка и запуск
+direnv allow
 cargo build --release
-./target/release/pr-oxy
+PORT=8080 USER=admin PASS=secret ./target/release/pr-oxy
 ```
 
 ### Способ 2: Без Nix (чистый Rust)
 
 ```bash
-# Установка Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
-
-# В системе должен быть доступен C-linker (gcc/clang)
 sudo apt update && sudo apt install -y build-essential
 
-# Сборка и запуск
 cargo build --release
-./target/release/pr-oxy
+PORT=8080 USER=admin PASS=secret ./target/release/pr-oxy
 ```
 
-## Конфигурация
+## CI/CD
 
-Файл `proxy.toml` в рабочей директории:
-
-```toml
-bind = "0.0.0.0"
-port = 8080
-```
-
-## Запуск
+- **CI** — проверка сборки на каждый PR/push
+- **Release** — автоматическая сборка и публикация бинарника в GitHub Releases при пуше тега `v*`
 
 ```bash
-RUST_LOG=info ./target/release/pr-oxy
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 ## Проверка
 
 ```bash
-# HTTP
+# Без авторизации (если USER/PASS не заданы)
 curl -x http://127.0.0.1:8080 -I http://example.com
 
-# HTTPS (CONNECT)
-curl -x http://127.0.0.1:8080 -I https://example.com
+# С авторизацией
+curl -x http://admin:secret@127.0.0.1:8080 -I http://example.com
+curl -x http://admin:secret@127.0.0.1:8080 -I https://example.com
 ```
 
 ## Оптимизации release

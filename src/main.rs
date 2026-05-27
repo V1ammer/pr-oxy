@@ -1,28 +1,50 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use base64::Engine as _;
+use std::env;
 use std::net::SocketAddr;
+use std::sync::OnceLock;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{info, warn};
 
-#[derive(Debug, Deserialize)]
-struct Config {
-    bind: String,
-    port: u16,
+#[derive(Debug)]
+struct Auth {
+    user: String,
+    pass: String,
 }
+
+#[derive(Debug)]
+struct Config {
+    addr: SocketAddr,
+    auth: Option<Auth>,
+}
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let raw = tokio::fs::read_to_string("proxy.toml")
-        .await
-        .context("read proxy.toml")?;
-    let cfg: Config = toml::from_str(&raw).context("parse proxy.toml")?;
-    let addr: SocketAddr = format!("{}:{}", cfg.bind, cfg.port).parse()?;
+    let port: u16 = env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
 
-    let listener = TcpListener::bind(addr).await?;
-    info!(%addr, "proxy listening");
+    let auth = match (env::var("USER"), env::var("PASS")) {
+        (Ok(u), Ok(p)) => Some(Auth { user: u, pass: p }),
+        _ => None,
+    };
+
+    let cfg = Config {
+        addr: SocketAddr::from(([0, 0, 0, 0], port)),
+        auth,
+    };
+
+    CONFIG.set(cfg).unwrap();
+    let cfg = CONFIG.get().unwrap();
+
+    let listener = TcpListener::bind(cfg.addr).await?;
+    info!(addr = %cfg.addr, "proxy listening");
 
     loop {
         let (client, peer) = listener.accept().await?;
@@ -40,6 +62,15 @@ async fn serve(mut client: TcpStream) -> Result<()> {
     let mut buf = [0u8; 8192];
     let n = read_headers(&mut client, &mut buf).await?;
     let head = &buf[..n];
+
+    if let Some(ref auth) = CONFIG.get().unwrap().auth {
+        if !check_auth(head, auth) {
+            client
+                .write_all(b"HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\nContent-Length: 0\r\n\r\n")
+                .await?;
+            return Ok(());
+        }
+    }
 
     if head.starts_with(b"CONNECT ") {
         tunnel_connect(&mut client, head).await
@@ -65,11 +96,41 @@ async fn read_headers(stream: &mut TcpStream, buf: &mut [u8]) -> Result<usize> {
     }
 }
 
+fn check_auth(head: &[u8], auth: &Auth) -> bool {
+    let text = match std::str::from_utf8(head) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    for line in text.lines() {
+        let Some((key, val)) = line.split_once(':') else { continue };
+        if !key.trim().eq_ignore_ascii_case("proxy-authorization") {
+            continue;
+        }
+        let val = val.trim();
+        let b64 = val
+            .strip_prefix("Basic ")
+            .or_else(|| val.strip_prefix("basic "))
+            .unwrap_or(val);
+        let decoded = match base64::engine::general_purpose::STANDARD.decode(b64) {
+            Ok(d) => d,
+            Err(_) => return false,
+        };
+        let creds = match std::str::from_utf8(&decoded) {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        let mut parts = creds.splitn(2, ':');
+        if let (Some(u), Some(p)) = (parts.next(), parts.next()) {
+            return u == auth.user && p == auth.pass;
+        }
+    }
+    false
+}
+
 async fn tunnel_connect(client: &mut TcpStream, head: &[u8]) -> Result<()> {
     let end = head.iter().position(|&b| b == b'\n').context("no newline")?;
     let line = std::str::from_utf8(&head[..end])?.trim();
 
-    // CONNECT host:port HTTP/1.1
     let target = line.split_whitespace().nth(1).context("bad CONNECT")?;
     info!(target, "tunnel");
 
