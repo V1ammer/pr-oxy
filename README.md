@@ -24,8 +24,6 @@ Ultra-low-latency forward HTTP/HTTPS proxy на чистом Rust с Basic Auth.
 curl -fsSL https://raw.githubusercontent.com/V1ammer/pr-oxy/master/deploy/install.sh | sudo bash -s -- 8080 admin secret
 ```
 
-> **Важно:** замени `V1ammer/pr-oxy` внутри `deploy/install.sh` на свой `username/repo` перед первым релизом.
-
 Скрипт автоматически:
 - Создаст пользователя `pr-oxy`
 - Скачает последний бинарник из GitHub Releases
